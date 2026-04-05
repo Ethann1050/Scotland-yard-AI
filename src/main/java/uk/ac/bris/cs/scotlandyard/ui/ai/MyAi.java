@@ -71,13 +71,17 @@ public class MyAi implements Ai {
 	@Nonnull @Override public Move pickMove(
 			@Nonnull Board board,
 			Pair<Long, TimeUnit> timeoutPair) {
-		ImmutableSet<Piece> pieces = board.getPlayers();
-		ImmutableSet<Piece> immutableDetectives = pieces.stream().filter(Piece::isDetective).collect(ImmutableSet.toImmutableSet());
-		List<Integer> detectives = immutableDetectives.stream().map(piece -> board.getDetectiveLocation((Piece.Detective) piece)).flatMap(Optional::stream).toList();
+		int currentMax = 0;
+		Move bestMove=null;
 
-		HashMap<Move, Integer> scores = new HashMap<>();
+		ImmutableSet<Piece> pieces = board.getPlayers();
+		ImmutableSet<Piece> immutableDetectives = pieces.stream().filter(piece -> piece.isDetective()).collect(ImmutableSet.toImmutableSet());
+		//makes the optional into a stream of one item of data and adds that to the list
+		List<Integer> detectives = immutableDetectives.stream().map(piece -> board.getDetectiveLocation((Piece.Detective) piece)).flatMap(opt->opt.stream()).toList();
 
 		var moves = board.getAvailableMoves().asList();
+
+		// checks which type of move it is and gets the destination from it
 		for (Move move : moves) {
 			int finalDestination = move.accept(new Move.Visitor<Integer>() {
 				@Override
@@ -92,12 +96,11 @@ public class MyAi implements Ai {
 					return doubleMove.destination2;
 				}
 			});
-
-			scores.put(move, distanceToDetective(board.getSetup(), detectives, finalDestination));
+			//checking new best value and hence best move
+			int newDistance=distanceToDetective(board.getSetup(), detectives, finalDestination);
+			if (newDistance>currentMax){currentMax=newDistance; bestMove=move;}
 		}
 
-		Move maxKey = scores.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(null);
-
-		return maxKey;
+		return bestMove;
 	}
 }
