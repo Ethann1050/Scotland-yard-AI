@@ -13,35 +13,6 @@ public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
 
-//	private Integer distanceToDetective(GameSetup setup, List<Integer> detectives, int location) {
-//        Set<Integer> detectiveLocations = new HashSet<>(detectives);
-//
-//		ArrayList<Integer> visited = new ArrayList<Integer>();
-//		ArrayList<Integer> queue = new ArrayList<Integer>();
-//
-//		visited.add(location);
-//		queue.add(location);
-//
-//
-//		int length = 0;
-//
-//		while (!queue.isEmpty()) {
-//			int currentNode = queue.get(0);
-//			queue.remove(0);
-//			length++;
-//			if (detectiveLocations.contains(currentNode)) {
-//				return length;
-//			}
-//			for (int node : setup.graph.adjacentNodes(currentNode)) {
-//				if (!visited.contains(node)) {
-//					queue.add(node);
-//					visited.add(node);
-//				}
-//			}
-//		}
-//		return 0;
-//	}
-
 	private Integer distanceToDetective(GameSetup setup, List<Integer> detectives, int start) {
 		Set<Integer> targets = new HashSet<>(detectives);
 
@@ -65,8 +36,80 @@ public class MyAi implements Ai {
 				}
 			}
 		}
-		return Integer.MAX_VALUE; // no path
+		return Integer.MAX_VALUE;
 	}
+
+	private List<Integer> getDestinations(Move move) {
+		return move.accept(new Move.Visitor<>() {
+			@Override
+			public List<Integer> visit(Move.SingleMove move) {
+				return List.of(move.destination);
+			}
+
+			@Override
+			public List<Integer> visit(Move.DoubleMove move) {
+				return List.of(move.destination1, move.destination2);
+			}
+		});
+	}
+
+	private List<ScotlandYard.Ticket> getTicketUsed(Move move) {
+		return move.accept(new Move.Visitor<List<ScotlandYard.Ticket>>() {
+			@Override
+			public List<ScotlandYard.Ticket> visit(Move.SingleMove move) {
+				return List.of(move.ticket);
+			}
+
+			@Override
+			public List<ScotlandYard.Ticket> visit(Move.DoubleMove move) {
+				return List.of(move.ticket1, move.ticket2);
+			}
+		});
+	}
+
+//	evaluates heuristics
+	private float reward(Board board, Move move, List<Integer> detectives) {
+		float penalty = 0;
+
+		List<Integer> destinations = getDestinations(move);
+		for (int destination : destinations) {
+			if (detectives.contains(destination)){
+				return -1.0f;
+			}
+		}
+
+//		gets the last destination regardless of single or double move.
+		int finalDestination = destinations.get(destinations.size() - 1);
+
+		float detectiveDistance = distanceToDetective(board.getSetup(), detectives, finalDestination);
+
+		int escapeRoutes = board.getSetup().graph.adjacentNodes(finalDestination).size();
+
+		if (move instanceof Move.DoubleMove) {
+			if (detectiveDistance >= 3) {
+				penalty += 15.0f; // Only double-move if detectives are close
+			}
+		}
+
+		for (ScotlandYard.Ticket ticket : getTicketUsed(move)) {
+			if (ticket.equals(ScotlandYard.Ticket.UNDERGROUND)) {
+				penalty += 2.0f;
+			} else if (ticket.equals(ScotlandYard.Ticket.BUS)) {
+				penalty += 1.0f;
+			} else if (ticket.equals(ScotlandYard.Ticket.SECRET)) {
+				penalty += 3.0f;
+			}
+		}
+
+		float finalReward = (detectiveDistance * 2.0f) + (escapeRoutes * 0.3f) - penalty;
+
+		if (detectiveDistance <= 2) {
+			finalReward *= 0.001f;
+		}
+
+		return finalReward;
+    }
+
 
 	@Nonnull @Override public Move pickMove(
 			@Nonnull Board board,
@@ -75,29 +118,18 @@ public class MyAi implements Ai {
 		ImmutableSet<Piece> immutableDetectives = pieces.stream().filter(Piece::isDetective).collect(ImmutableSet.toImmutableSet());
 		List<Integer> detectives = immutableDetectives.stream().map(piece -> board.getDetectiveLocation((Piece.Detective) piece)).flatMap(Optional::stream).toList();
 
-		HashMap<Move, Integer> scores = new HashMap<>();
-
 		var moves = board.getAvailableMoves().asList();
+		Move bestMove = moves.get(0);
+		float maxScore = -Float.MAX_VALUE;
+
 		for (Move move : moves) {
-			int finalDestination = move.accept(new Move.Visitor<Integer>() {
-				@Override
-				public Integer visit(Move.SingleMove singleMove) {
-					// Accesses the public final field in SingleMove
-					return singleMove.destination;
-				}
-
-				@Override
-				public Integer visit(Move.DoubleMove doubleMove) {
-					// Accesses the public final field in DoubleMove for the FINAL stop
-					return doubleMove.destination2;
-				}
-			});
-
-			scores.put(move, distanceToDetective(board.getSetup(), detectives, finalDestination));
+			float score = reward(board, move, detectives);
+			if (score > maxScore) {
+				maxScore = score;
+				bestMove = move;
+			}
 		}
 
-		Move maxKey = scores.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(null);
-
-		return maxKey;
+		return bestMove;
 	}
 }
