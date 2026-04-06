@@ -2,6 +2,7 @@ package uk.ac.bris.cs.scotlandyard.ui.ai;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 import com.google.common.collect.ImmutableSet;
 import jakarta.annotation.Nonnull;
@@ -14,13 +15,14 @@ import static uk.ac.bris.cs.scotlandyard.model.ScotlandYard.Transport.FERRY;
 public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
-	//bfs search for nearest detective from the current potential node being tested
-	private Integer distanceToDetective(GameSetup game, List<Integer> detectives, int myLocation) {
+
+	private Integer breadthFirstSearch(GameSetup game, Predicate<Integer> target, int startingLocation) {
+
 		List<Integer> spotsToSearch = new ArrayList<>();
-		spotsToSearch.add(myLocation);
+		spotsToSearch.add(startingLocation);
 
 		List<Integer> spotsAlreadyChecked = new ArrayList<>();
-		spotsAlreadyChecked.add(myLocation);
+		spotsAlreadyChecked.add(startingLocation);
 
 		int movesCount = 0;
 
@@ -30,7 +32,7 @@ public class MyAi implements Ai {
 			for (int currentSpot : spotsToSearch) {
 
 				//if a detective is at this spot we found the closest one
-				if (detectives.contains(currentSpot)) {
+				if (target.test(currentSpot)) {
 					return movesCount;
 				}
 
@@ -51,7 +53,13 @@ public class MyAi implements Ai {
 		}
 
 		//if we searched the whole map and found no detectives
-		return 999;
+		return -1;
+	}
+
+	//bfs search for nearest detective from the current potential node being tested
+	private Integer distanceToDetective(GameSetup game, List<Integer> detectives, int myLocation) {
+		return breadthFirstSearch(game, node -> detectives.contains(node), myLocation);
+
 	}
 
 	//gets the destination from a move
