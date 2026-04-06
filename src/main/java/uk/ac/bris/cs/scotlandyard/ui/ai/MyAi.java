@@ -117,6 +117,7 @@ public class MyAi implements Ai {
 //	evaluates heuristics
 	private float reward(Board board, Move move, List<Integer> detectives) {
 		float penalty = 0;
+		float finalReward;
 
 		List<Integer> destinations = getDestinations(move);
 		for (int destination : destinations) {
@@ -124,7 +125,6 @@ public class MyAi implements Ai {
 				return -1000.0f;
 			}
 		}
-
 //		gets the last destination regardless of single or double move.
 		int finalDestination = destinations.get(destinations.size() - 1);
 
@@ -154,12 +154,10 @@ public class MyAi implements Ai {
 			penalty += 100.0f;
 		}
 
-		float finalReward;
-
 		if (detectiveDistance <= 3) {
-			finalReward = (detectiveDistance * 4.0f) + (escapeRoutes * 0.3f) - penalty;
+			finalReward = (detectiveDistance * 10.0f) + (escapeRoutes * 3.0f) - penalty;
 		} else {
-			finalReward = (detectiveDistance) + (escapeRoutes * 2.0f) - penalty;
+			finalReward = (detectiveDistance * 5.0f) + (escapeRoutes * 3.0f) - penalty;
 		}
 
 		return finalReward;
