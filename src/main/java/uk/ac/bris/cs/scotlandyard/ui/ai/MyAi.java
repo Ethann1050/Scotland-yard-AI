@@ -16,7 +16,7 @@ public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
 
-	private Integer breadthFirstSearch(GameSetup game, Predicate<Integer> target, int startingLocation) {
+	private Integer breadthFirstSearch(GameSetup game,Board board, Predicate<Integer> target, int startingLocation) {
 
 		List<Integer> spotsToSearch = new ArrayList<>();
 		spotsToSearch.add(startingLocation);
@@ -41,8 +41,10 @@ public class MyAi implements Ai {
 
 					//if no checked this connected spot yet, add it to the list for the next "move"
 					if (!spotsAlreadyChecked.contains(connectedSpot)) {
-						spotsAlreadyChecked.add(connectedSpot);
-						nextLevelOfSpots.add(connectedSpot);
+						if (canAnyDetectiveUseNode(game, board, currentSpot, connectedSpot)) {
+							spotsAlreadyChecked.add(connectedSpot);
+							nextLevelOfSpots.add(connectedSpot);
+						}
 					}
 				}
 			}
@@ -56,9 +58,30 @@ public class MyAi implements Ai {
 		return -1;
 	}
 
+	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
+		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+		// get all detectives
+		List<Piece> detectives = board.getPlayers().stream()
+				.filter(p-> p.isDetective())
+				.toList();
+
+		for (Piece det : detectives) {
+			for (ScotlandYard.Transport t : requiredTransports) {
+				//check if the detective has the specific ticket (Taxi, Bus, or Underground)
+				//gets the count for each ticket type
+				int count = board.getPlayerTickets(det)
+						.map(tickets -> tickets.getCount(t.requiredTicket()))
+						.orElse(0);
+				//detective could use that edge
+				if (count > 0) return true;
+			}
+		}
+		return false;
+
+	}
 	//bfs search for nearest detective from the current potential node being tested
-	private Integer distanceToDetective(GameSetup game, List<Integer> detectives, int myLocation) {
-		return breadthFirstSearch(game, node -> detectives.contains(node), myLocation);
+	private Integer distanceToDetective(GameSetup game,Board board, List<Integer> detectives, int myLocation) {
+		return breadthFirstSearch(game, board, node -> detectives.contains(node), myLocation);
 
 	}
 
@@ -105,7 +128,7 @@ public class MyAi implements Ai {
 //		gets the last destination regardless of single or double move.
 		int finalDestination = destinations.get(destinations.size() - 1);
 
-		float detectiveDistance = distanceToDetective(board.getSetup(), detectives, finalDestination);
+		float detectiveDistance = distanceToDetective(board.getSetup(),board, detectives, finalDestination);
 
 		int escapeRoutes = board.getSetup().graph.adjacentNodes(finalDestination).size();
 
