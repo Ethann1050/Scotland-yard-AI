@@ -74,7 +74,7 @@ public class MyAi implements Ai {
 		List<Integer> destinations = getDestinations(move);
 		for (int destination : destinations) {
 			if (detectives.contains(destination)){
-				return -1.0f;
+				return -1000.0f;
 			}
 		}
 
@@ -88,6 +88,8 @@ public class MyAi implements Ai {
 		if (move instanceof Move.DoubleMove) {
 			if (detectiveDistance >= 3) {
 				penalty += 15.0f; // Only double-move if detectives are close
+			} else {
+				penalty += 5.0f;
 			}
 		}
 
@@ -101,10 +103,16 @@ public class MyAi implements Ai {
 			}
 		}
 
-		float finalReward = (detectiveDistance * 2.0f) + (escapeRoutes * 0.3f) - penalty;
-
 		if (detectiveDistance <= 2) {
-			finalReward *= 0.001f;
+			penalty += 100.0f;
+		}
+
+		float finalReward;
+
+		if (detectiveDistance <= 3) {
+			finalReward = (detectiveDistance * 4.0f) + (escapeRoutes * 0.3f) - penalty;
+		} else {
+			finalReward = (detectiveDistance) + (escapeRoutes * 2.0f) - penalty;
 		}
 
 		return finalReward;
