@@ -9,36 +9,52 @@ import io.atlassian.fugue.Pair;
 import org.checkerframework.checker.units.qual.A;
 import uk.ac.bris.cs.scotlandyard.model.*;
 
+import static uk.ac.bris.cs.scotlandyard.model.ScotlandYard.Transport.FERRY;
+
 public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
+	//bfs search for nearest detective from the current potential node being tested
+	private Integer distanceToDetective(GameSetup game, List<Integer> detectives, int myLocation) {
+		List<Integer> spotsToSearch = new ArrayList<>();
+		spotsToSearch.add(myLocation);
 
-	private Integer distanceToDetective(GameSetup setup, List<Integer> detectives, int start) {
-		Set<Integer> targets = new HashSet<>(detectives);
+		List<Integer> spotsAlreadyChecked = new ArrayList<>();
+		spotsAlreadyChecked.add(myLocation);
 
-		Queue<Integer> queue = new LinkedList<>();
-		Map<Integer, Integer> distance = new HashMap<>();
+		int movesCount = 0;
 
-		queue.add(start);
-		distance.put(start, 0);
+		while (!spotsToSearch.isEmpty()) {
+			List<Integer> nextLevelOfSpots = new ArrayList<>();
 
-		while (!queue.isEmpty()) {
-			int current = queue.poll();
+			for (int currentSpot : spotsToSearch) {
 
-			if (targets.contains(current)) {
-				return distance.get(current);
-			}
+				//if a detective is at this spot we found the closest one
+				if (detectives.contains(currentSpot)) {
+					return movesCount;
+				}
 
-			for (int next : setup.graph.adjacentNodes(current)) {
-				if (!distance.containsKey(next)) {
-					distance.put(next, distance.get(current) + 1);
-					queue.add(next);
+				//look at all the paths connected to this spot
+				for (int connectedSpot : game.graph.adjacentNodes(currentSpot)) {
+
+					//if no checked this connected spot yet, add it to the list for the next "move"
+					if (!spotsAlreadyChecked.contains(connectedSpot)) {
+						spotsAlreadyChecked.add(connectedSpot);
+						nextLevelOfSpots.add(connectedSpot);
+					}
 				}
 			}
+
+			//finished everything one count away move to next count away
+			spotsToSearch = nextLevelOfSpots;
+			movesCount = movesCount + 1;
 		}
-		return Integer.MAX_VALUE;
+
+		//if we searched the whole map and found no detectives
+		return 999;
 	}
 
+	//gets the destination from a move
 	private List<Integer> getDestinations(Move move) {
 		return move.accept(new Move.Visitor<>() {
 			@Override
@@ -52,7 +68,7 @@ public class MyAi implements Ai {
 			}
 		});
 	}
-
+	//gets the ticket from a move
 	private List<ScotlandYard.Ticket> getTicketUsed(Move move) {
 		return move.accept(new Move.Visitor<List<ScotlandYard.Ticket>>() {
 			@Override
@@ -115,8 +131,8 @@ public class MyAi implements Ai {
 			@Nonnull Board board,
 			Pair<Long, TimeUnit> timeoutPair) {
 		ImmutableSet<Piece> pieces = board.getPlayers();
-		ImmutableSet<Piece> immutableDetectives = pieces.stream().filter(Piece::isDetective).collect(ImmutableSet.toImmutableSet());
-		List<Integer> detectives = immutableDetectives.stream().map(piece -> board.getDetectiveLocation((Piece.Detective) piece)).flatMap(Optional::stream).toList();
+		ImmutableSet<Piece> immutableDetectives = pieces.stream().filter(piece->piece.isDetective()).collect(ImmutableSet.toImmutableSet());
+		List<Integer> detectives = immutableDetectives.stream().map(piece -> board.getDetectiveLocation((Piece.Detective) piece)).flatMap(optional->optional.stream()).toList();
 
 		var moves = board.getAvailableMoves().asList();
 		Move bestMove = moves.get(0);
