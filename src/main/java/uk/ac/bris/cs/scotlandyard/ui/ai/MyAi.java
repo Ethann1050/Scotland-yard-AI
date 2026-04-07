@@ -58,6 +58,42 @@ public class MyAi implements Ai {
 		return -1;
 	}
 
+	private float alphaBeta(VirtualState state, int depth, float alpha, float beta, boolean isMrX){
+		//base case
+		if (depth==0 || isCaught(state)){
+			return evaluateReward(state);
+		}
+		if (isMrX){
+			float max= -Float.MAX_VALUE;
+			//go through MrX moves
+			for (Move move: state.getAvailableMoves()){
+				VirtualState next = state.advance(move);
+
+				float eval = alphaBeta(next,depth-1,alpha,beta,false);
+
+				max=Math.max(max,eval);
+
+				alpha= Math.max(alpha, eval);
+
+				if (beta<= alpha){break;}
+			}
+			return max;
+		}
+		else{
+			float min= Float.MAX_VALUE;
+
+			for (VirtualState nextResponse : getDetectiveResponses(state)){
+				float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true);
+				min=Math.min(min,eval);
+
+				beta=Math.min(beta, eval);
+
+				if (beta<=alpha){break;}
+			}
+			return min;
+		}
+	}
+
 	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
 		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
 		// get all detectives
@@ -171,12 +207,13 @@ public class MyAi implements Ai {
 		ImmutableSet<Piece> immutableDetectives = pieces.stream().filter(piece->piece.isDetective()).collect(ImmutableSet.toImmutableSet());
 		List<Integer> detectives = immutableDetectives.stream().map(piece -> board.getDetectiveLocation((Piece.Detective) piece)).flatMap(optional->optional.stream()).toList();
 
+		Board.GameState state = (Board.GameState) board;
+
 		var moves = board.getAvailableMoves().asList();
 		Move bestMove = moves.get(0);
 		float maxScore = -Float.MAX_VALUE;
-
 		for (Move move : moves) {
-			float score = reward(board, move, detectives);
+			float score = alphaBeta(new VirtualState(state.advance(move)),3,-Float.MAX_VALUE,-Float.MIN_VALUE,true);
 			if (score > maxScore) {
 				maxScore = score;
 				bestMove = move;
