@@ -4,6 +4,8 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import jakarta.annotation.Nonnull;
 import io.atlassian.fugue.Pair;
@@ -16,7 +18,7 @@ public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
 
-	private Integer breadthFirstSearch(GameSetup game,Board board, Predicate<Integer> target, int startingLocation) {
+	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation) {
 
 		List<Integer> spotsToSearch = new ArrayList<>();
 		spotsToSearch.add(startingLocation);
@@ -58,11 +60,47 @@ public class MyAi implements Ai {
 		return -1;
 	}
 
+	private boolean isCaught(VirtualState state) {
+		return !state.gameState.getWinner().isEmpty();
+	}
+
+//	This is temporarily just a greedy algorithm
+	private List<VirtualState> getDetectiveResponses(VirtualState state) {
+		Board.GameState currentState = state.gameState;
+		List<VirtualState> detectiveResponses;
+		int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
+		for (Piece player : currentState.getPlayers().asList()) {
+			if (player.isDetective()) {
+				Move bestMove = null;
+				int minDistance = Integer.MAX_VALUE;
+
+				for (Move move : currentState.getAvailableMoves()) {
+					if (move.commencedBy().equals(player)) {
+						int destination = getDestinations(move).get(getDestinations(move).size() - 1);
+						int distanceToMrX = breadthFirstSearch(currentState.getSetup(), currentState, node -> node == mrXLocation, destination);
+						if (distanceToMrX < minDistance) {
+							minDistance = distanceToMrX;
+							bestMove = move;
+						}
+					}
+				}
+				if (bestMove != null) {
+					currentState = currentState.advance(bestMove);
+				} else {
+					break;
+				}
+			}
+		}
+
+        return List.of(new VirtualState(currentState));
+    }
+
 	private float alphaBeta(VirtualState state, int depth, float alpha, float beta, boolean isMrX){
 		//base case
 		if (depth==0 || isCaught(state)){
 			return evaluateReward(state);
 		}
+
 		if (isMrX){
 			float max= -Float.MAX_VALUE;
 			//go through MrX moves
@@ -79,19 +117,18 @@ public class MyAi implements Ai {
 			}
 			return max;
 		}
-		else{
-			float min= Float.MAX_VALUE;
 
-			for (VirtualState nextResponse : getDetectiveResponses(state)){
-				float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true);
-				min=Math.min(min,eval);
+		float min= Float.MAX_VALUE;
 
-				beta=Math.min(beta, eval);
+		for (VirtualState nextResponse : getDetectiveResponses(state)){
+			float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true);
+			min=Math.min(min,eval);
 
-				if (beta<=alpha){break;}
-			}
-			return min;
+			beta=Math.min(beta, eval);
+
+			if (beta<=alpha){break;}
 		}
+		return min;
 	}
 
 	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
@@ -199,6 +236,45 @@ public class MyAi implements Ai {
 		return finalReward;
     }
 
+	private ImmutableMap<ScotlandYard.Ticket, Integer> getTicketMap(Board board, Piece piece) {
+		Board.TicketBoard ticketBoard = board.getPlayerTickets(piece)
+				.orElseThrow(() -> new IllegalArgumentException("Player not found"));
+
+		Map<ScotlandYard.Ticket, Integer> map = new HashMap<>();
+		for (ScotlandYard.Ticket t : ScotlandYard.Ticket.values()) {
+			map.put(t, ticketBoard.getCount(t));
+		}
+		return ImmutableMap.copyOf(map);
+	}
+
+	private Board.GameState reconstructState(Board board, int mrXLocation) {
+		// 1. Reconstruct MrX Player
+		Player mrX = new Player(
+				Piece.MrX.MRX,
+				getTicketMap(board, Piece.MrX.MRX), // Use the helper here
+				mrXLocation
+		);
+
+		// 2. Reconstruct Detectives
+		List<Player> detectives = new ArrayList<>();
+		for (Piece p : board.getPlayers()) {
+			if (p.isDetective()) {
+				int loc = board.getDetectiveLocation((Piece.Detective) p).orElseThrow();
+				detectives.add(new Player(
+						p,
+						getTicketMap(board, p), // And here
+						loc
+				));
+			}
+		}
+
+		// 3. Build using your Factory
+		return new MyGameStateFactory().build(
+				board.getSetup(),
+				mrX,
+				ImmutableList.copyOf(detectives)
+		);
+	}
 
 	@Nonnull @Override public Move pickMove(
 			@Nonnull Board board,
@@ -207,9 +283,9 @@ public class MyAi implements Ai {
 		ImmutableSet<Piece> immutableDetectives = pieces.stream().filter(piece->piece.isDetective()).collect(ImmutableSet.toImmutableSet());
 		List<Integer> detectives = immutableDetectives.stream().map(piece -> board.getDetectiveLocation((Piece.Detective) piece)).flatMap(optional->optional.stream()).toList();
 
-		Board.GameState state = (Board.GameState) board;
-
 		var moves = board.getAvailableMoves().asList();
+		Board.GameState state = reconstructState(board, moves.get(0).source());
+		System.out.println(moves);
 		Move bestMove = moves.get(0);
 		float maxScore = -Float.MAX_VALUE;
 		for (Move move : moves) {
