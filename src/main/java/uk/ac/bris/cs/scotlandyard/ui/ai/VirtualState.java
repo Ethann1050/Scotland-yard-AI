@@ -22,7 +22,7 @@ public class VirtualState {
 
     public int getPieceLocation(Piece piece) {
         // If it's a detective, we can use the standard board method
-        if (piece.isDetective()) return gameState.getDetectiveLocation((Piece.Detective) piece).get();
+        if (piece.isDetective()) return gameState.getDetectiveLocation((Piece.Detective) piece).orElse(0);
 
         // For Mr. X, we have to look at the last entry in the travel log
         // OR use the 'source' of his available moves since it's his turn.
