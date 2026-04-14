@@ -18,7 +18,7 @@ public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
 
-	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation) {
+	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation, Piece detective) {
 
 		List<Integer> spotsToSearch = new ArrayList<>();
 		spotsToSearch.add(startingLocation);
@@ -43,7 +43,7 @@ public class MyAi implements Ai {
 
 					//if no checked this connected spot yet, add it to the list for the next "move"
 					if (!spotsAlreadyChecked.contains(connectedSpot)) {
-						if (canAnyDetectiveUseNode(game, board, currentSpot, connectedSpot)) {
+						if (canThisDetectiveUseNode(game, board, currentSpot, connectedSpot, detective)) {
 							spotsAlreadyChecked.add(connectedSpot);
 							nextLevelOfSpots.add(connectedSpot);
 						}
@@ -77,7 +77,7 @@ public class MyAi implements Ai {
 				for (Move move : currentState.getAvailableMoves()) {
 					if (move.commencedBy().equals(player)) {
 						int destination = getDestinations(move).get(getDestinations(move).size() - 1);
-						int distanceToMrX = breadthFirstSearch(currentState.getSetup(), currentState, node -> node == mrXLocation, destination);
+						int distanceToMrX = breadthFirstSearch(currentState.getSetup(), currentState, node -> node == mrXLocation, destination, player);
 						if (distanceToMrX < minDistance) {
 							minDistance = distanceToMrX;
 							bestMove = move;
@@ -131,6 +131,21 @@ public class MyAi implements Ai {
 		return min;
 	}
 
+	private boolean canThisDetectiveUseNode (GameSetup game, Board board, Integer current, Integer connected, Piece detective) {
+		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+
+		for (ScotlandYard.Transport t : requiredTransports) {
+			//check if the detective has the specific ticket (Taxi, Bus, or Underground)
+			//gets the count for each ticket type
+			int count = board.getPlayerTickets(detective)
+					.map(tickets -> tickets.getCount(t.requiredTicket()))
+					.orElse(0);
+			//detective could use that edge
+			if (count > 0) return true;
+		}
+		return false;
+	}
+
 	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
 		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
 		// get all detectives
@@ -153,8 +168,17 @@ public class MyAi implements Ai {
 
 	}
 	//bfs search for nearest detective from the current potential node being tested
-	private Integer distanceToDetective(GameSetup game,Board board, List<Integer> detectives, int myLocation) {
-		return breadthFirstSearch(game, board, node -> detectives.contains(node), myLocation);
+	private Integer distanceToDetective(GameSetup game,Board board, List<Piece> detectives, int myLocation) {
+		int closestDistance = 999999;
+		int currentDistance = 999999;
+		for (Piece detective : detectives) {
+			int detectiveLocation = board.getDetectiveLocation( (Piece.Detective) detective).orElseThrow();
+			currentDistance = breadthFirstSearch(game, board, node -> node == myLocation, detectiveLocation, detective);
+			if (currentDistance != -1 && currentDistance < closestDistance) {
+				closestDistance = currentDistance;
+			}
+		}
+		return closestDistance;
 
 	}
 
@@ -188,7 +212,7 @@ public class MyAi implements Ai {
 	}
 
 //	evaluates heuristics
-	private float reward(Board board, Move move, List<Integer> detectives) {
+	private float reward(Board board, Move move, List<Integer> detectives, List<Piece> detectivePieces) {
 		float penalty = 0;
 		float finalReward;
 
@@ -201,7 +225,7 @@ public class MyAi implements Ai {
 //		gets the last destination regardless of single or double move.
 		int finalDestination = destinations.get(destinations.size() - 1);
 
-		float detectiveDistance = distanceToDetective(board.getSetup(),board, detectives, finalDestination);
+		float detectiveDistance = distanceToDetective(board.getSetup(),board, detectivePieces, finalDestination);
 
 		int escapeRoutes = board.getSetup().graph.adjacentNodes(finalDestination).size();
 
