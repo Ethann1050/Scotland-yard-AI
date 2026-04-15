@@ -66,48 +66,38 @@ public class MyAi implements Ai {
 
 //	This is just a greedy algorithm that checks if any move reuslts in a win and also moves the detectives to their best move to move closest to the detective
 	private List<VirtualState> getDetectiveResponses(VirtualState state) {
-	Board.GameState currentState = state.gameState;
+		Board.GameState currentState = state.gameState;
+		int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
 
-	for (Piece player : currentState.getPlayers().asList()) {
-		if (player.isDetective()) {
-			// 1. CRITICAL: Check if any available move for this detective results in a win
-			Move winningMove = null;
-			for (Move move : currentState.getAvailableMoves()) {
-				if (move.commencedBy().equals(player)) {
-					// If this specific move ends the game, take it immediately!
-					if (!currentState.advance(move).getWinner().isEmpty()) {
-						winningMove = move;
-						break;
+		for (Piece player : currentState.getPlayers().asList()) {
+			if (player.isDetective()) {
+				Move bestMove = null;
+				int minDistance = Integer.MAX_VALUE;
+				ImmutableSet<Move> availableMoves = currentState.getAvailableMoves();
+				for (Move move : availableMoves) {
+					if (move.commencedBy().equals(player)) {
+						Board.GameState nextState = currentState.advance(move);
+
+						if (!nextState.getWinner().isEmpty()) {
+							return List.of(new VirtualState(nextState));
+						}
+
+						int destination = getDestinations(move).get(getDestinations(move).size() - 1);
+						int distance = breadthFirstSearch(currentState.getSetup(), currentState, n -> n == mrXLocation, destination, player);
+
+						if (distance < minDistance) {
+							minDistance = distance;
+							bestMove = move;
+						}
 					}
 				}
-			}
-
-			if (winningMove != null) {
-				currentState = currentState.advance(winningMove);
-				// If a detective wins, we can stop simulating other detectives
-				return List.of(new VirtualState(currentState));
-			}
-
-			// 2. If no winning move, use your existing greedy BFS logic
-			Move bestMove = null;
-			int minDistance = Integer.MAX_VALUE;
-			int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
-
-			for (Move move : currentState.getAvailableMoves()) {
-				if (move.commencedBy().equals(player)) {
-					int destination = getDestinations(move).get(getDestinations(move).size() - 1);
-					int dist = breadthFirstSearch(currentState.getSetup(), currentState, n -> n == mrXLocation, destination, player);
-					if (dist < minDistance) {
-						minDistance = dist;
-						bestMove = move;
-					}
+				if (bestMove != null) {
+					currentState = currentState.advance(bestMove);
 				}
 			}
-			if (bestMove != null) currentState = currentState.advance(bestMove);
 		}
+		return List.of(new VirtualState(currentState));
 	}
-	return List.of(new VirtualState(currentState));
-}
 
 	private float alphaBeta(VirtualState state, int depth, float alpha, float beta, boolean isMrX,int maxdepth){
 		//base case
@@ -246,15 +236,15 @@ public class MyAi implements Ai {
 
 
 		//prevent dead ends
-		if (escapeRoutes <=2){penalty +=1000;}
+//		if (escapeRoutes <=2){penalty +=1000;}
 		//prevent near misses with detectives
-		if (detectiveDistance <= 2) {penalty += 2000.0f;}
 		if (detectiveDistance <= 1) {penalty += 9000.0f;}
+		if (detectiveDistance <= 2) {penalty += 2000.0f;}
 
 
 		//ticket weighting
 		if (detectiveDistance <= 3) {
-			finalReward = (detectiveDistance * 500.0f) + (escapeRoutes * 250.0f) - penalty;
+			finalReward = (detectiveDistance * 500.0f) + (escapeRoutes * 50.0f) - penalty;
 		} else {
 			finalReward = (detectiveDistance * 100.0f) + (escapeRoutes * 50.0f) - penalty;
 		}
