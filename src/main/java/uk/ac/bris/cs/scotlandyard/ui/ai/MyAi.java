@@ -297,16 +297,16 @@ public class MyAi implements Ai {
 		Board.GameState state = reconstructState(board, moves.get(0).source());
 		int depth=3;
 
-		Move bestMove = moves.get(0);
-		float maxScore = -Float.MAX_VALUE;
-		for (Move move : moves) {
-			float score = alphaBeta(new VirtualState(state.advance(move)),depth,-Float.MAX_VALUE,Float.MAX_VALUE,false, depth);
-			if (score > maxScore) {
-				maxScore = score;
-				bestMove = move;
-			}
-		}
-
-		return bestMove;
+		return moves.parallelStream()
+				.map(move -> {
+					int destination = getDestinations(move).get(getDestinations(move).size() - 1);
+					float score = alphaBeta(new VirtualState(state.advance(move)),
+							depth, -Float.MAX_VALUE, Float.MAX_VALUE, false, depth);
+					return new AbstractMap.SimpleEntry<>(move, score);
+				})
+				// Find the entry with the highest score
+				.max(Comparator.comparing(Map.Entry::getValue))
+				.map(Map.Entry::getKey)
+				.orElse(moves.get(0));
 	}
 }
