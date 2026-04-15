@@ -15,7 +15,7 @@ public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
 
-	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation) {
+	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation, Piece detective) {
 
 		Set<Integer> spotsToSearch = new HashSet<>();
 		spotsToSearch.add(startingLocation);
@@ -43,7 +43,7 @@ public class MyAi implements Ai {
 
 					//if no checked this connected spot yet, add it to the list for the next "move"
 					if (!spotsAlreadyChecked.contains(connectedSpot)) {
-						if (canAnyDetectiveUseNode(game, board, currentSpot, connectedSpot)) {
+						if (canThisDetectiveUseNode(game, board, currentSpot, connectedSpot, detective)) {
 							spotsAlreadyChecked.add(connectedSpot);
 							nextLevelOfSpots.add(connectedSpot);
 						}
@@ -96,7 +96,7 @@ public class MyAi implements Ai {
 			for (Move move : currentState.getAvailableMoves()) {
 				if (move.commencedBy().equals(player)) {
 					int destination = getDestinations(move).get(getDestinations(move).size() - 1);
-					int dist = breadthFirstSearch(currentState.getSetup(), currentState, n -> n == mrXLocation, destination);
+					int dist = breadthFirstSearch(currentState.getSetup(), currentState, n -> n == mrXLocation, destination, player);
 					if (dist < minDistance) {
 						minDistance = dist;
 						bestMove = move;
@@ -148,6 +148,21 @@ public class MyAi implements Ai {
 		return min;
 	}
 
+	private boolean canThisDetectiveUseNode (GameSetup game, Board board, Integer current, Integer connected, Piece detective) {
+		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+
+		for (ScotlandYard.Transport t : requiredTransports) {
+			//check if the detective has the specific ticket (Taxi, Bus, or Underground)
+			//gets the count for each ticket type
+			int count = board.getPlayerTickets(detective)
+					.map(tickets -> tickets.getCount(t.requiredTicket()))
+					.orElse(0);
+			//detective could use that edge
+			if (count > 0) return true;
+		}
+		return false;
+	}
+
 	//checks if the detectives has the tickets available to use the specific nodes
 	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
 		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
@@ -173,7 +188,16 @@ public class MyAi implements Ai {
 
 	//bfs search for nearest detective from the current potential node being tested
 	private Integer distanceToDetective(GameSetup game,Board board, List<Piece> detectives, int myLocation) {
-		return breadthFirstSearch(game, board, node->detectives.contains(node),myLocation);
+		int closestDistance = Integer.MAX_VALUE;
+		int currentDistance = Integer.MAX_VALUE;
+		for (Piece detective : detectives) {
+			int detectiveLocation = board.getDetectiveLocation( (Piece.Detective) detective).orElseThrow();
+			currentDistance = breadthFirstSearch(game, board, node -> node == myLocation, detectiveLocation, detective);
+			if (currentDistance != -1 && currentDistance < closestDistance) {
+				closestDistance = currentDistance;
+			}
+		}
+		return closestDistance;
 
 	}
 
