@@ -64,7 +64,7 @@ public class MyAi implements Ai {
 		return !state.gameState.getWinner().isEmpty();
 	}
 
-//	This is just a greedy algorithm that checks if any move reuslts in a win and also moves the detectives to their best move to move closest to the detective
+//	This is just a greedy algorithm that checks if any move results in a win and also moves the detectives to their best move to move closest to the detective
 	private List<VirtualState> getDetectiveResponses(VirtualState state) {
 		Board.GameState currentState = state.gameState;
 		int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
@@ -99,22 +99,22 @@ public class MyAi implements Ai {
 		return List.of(new VirtualState(currentState));
 	}
 
-	private float alphaBeta(VirtualState state, int depth, float alpha, float beta, boolean isMrX,int maxdepth){
-		//base case
+	private float alphaBeta(VirtualState state, int depth, float alpha, float beta, boolean isMrX, int maxDepth){
+//		base case
 		if (depth==0 || isCaught(state)){
 			return evaluateReward(state);
 		}
 
 		if (isMrX){
 			float max= -Float.MAX_VALUE;
-			//go through MrX moves
+//			go through MrX moves
 			for (Move move: state.getAvailableMoves()){
-				//double moves are skipped at lower depth to optimise as double moves only really matter for fast escape if detectives are near;
-				if (depth <maxdepth && move instanceof Move.DoubleMove) continue;
+//				double moves are skipped at lower depth to optimise as double moves only really matter for fast escape if detectives are near
+				if (depth <maxDepth && move instanceof Move.DoubleMove) continue;
 
 				VirtualState next = state.advance(move);
 
-				float eval = alphaBeta(next,depth-1,alpha,beta,false, maxdepth);
+				float eval = alphaBeta(next,depth-1,alpha,beta,false, maxDepth);
 
 				max=Math.max(max,eval);
 
@@ -128,7 +128,7 @@ public class MyAi implements Ai {
 		float min= Float.MAX_VALUE;
 
 		for (VirtualState nextResponse : getDetectiveResponses(state)){
-			float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true, maxdepth);
+			float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true, maxDepth);
 			min=Math.min(min,eval);
 
 			beta=Math.min(beta, eval);
@@ -139,36 +139,36 @@ public class MyAi implements Ai {
 	}
 
 	private boolean canThisDetectiveUseNode (GameSetup game, Board board, Integer current, Integer connected, Piece detective) {
-		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+		ImmutableSet<ScotlandYard.Transport> requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
 
 		for (ScotlandYard.Transport t : requiredTransports) {
-			//check if the detective has the specific ticket (Taxi, Bus, or Underground)
-			//gets the count for each ticket type
+//			check if the detective has the specific ticket (Taxi, Bus, or Underground)
+//			gets the count for each ticket type
 			int count = board.getPlayerTickets(detective)
 					.map(tickets -> tickets.getCount(t.requiredTicket()))
 					.orElse(0);
-			//detective could use that edge
+//			detective could use that edge
 			if (count > 0) return true;
 		}
 		return false;
 	}
 
-	//checks if the detectives has the tickets available to use the specific nodes
+//	checks if the detectives has the tickets available to use the specific nodes
 	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
-		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
-		// get all detectives
+		ImmutableSet<ScotlandYard.Transport> requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+//		get all detectives
 		List<Piece> detectives = board.getPlayers().stream()
 				.filter(p-> p.isDetective())
 				.toList();
 
 		for (Piece det : detectives) {
 			for (ScotlandYard.Transport t : requiredTransports) {
-				//check if the detective has the specific ticket (Taxi, Bus, or Underground)
-				//gets the count for each ticket type
+//				check if the detective has the specific ticket (Taxi, Bus, or Underground)
+//				gets the count for each ticket type
 				int count = board.getPlayerTickets(det)
 						.map(tickets -> tickets.getCount(t.requiredTicket()))
 						.orElse(0);
-				//detective could use that edge
+//				detective could use that edge
 				if (count > 0) return true;
 			}
 		}
@@ -176,12 +176,12 @@ public class MyAi implements Ai {
 
 	}
 
-	//bfs search for nearest detective from the current potential node being tested
+//	bfs search for nearest detective from the current potential node being tested
 	private Integer distanceToDetective(GameSetup game,Board board, List<Piece> detectives, int myLocation) {
 		int closestDistance = Integer.MAX_VALUE;
 		int currentDistance = Integer.MAX_VALUE;
 		for (Piece detective : detectives) {
-			int detectiveLocation = board.getDetectiveLocation( (Piece.Detective) detective).orElseThrow();
+			int detectiveLocation = board.getDetectiveLocation( (Piece.Detective) detective).orElse(-1);
 			currentDistance = breadthFirstSearch(game, board, node -> node == myLocation, detectiveLocation, detective);
 			if (currentDistance != -1 && currentDistance < closestDistance) {
 				closestDistance = currentDistance;
@@ -191,7 +191,7 @@ public class MyAi implements Ai {
 
 	}
 
-	//gets the destination from a move uses visitor pattern
+//	gets the destination from a move uses visitor pattern
 	private List<Integer> getDestinations(Move move) {
 		return move.accept(new Move.Visitor<>() {
 			@Override
@@ -226,7 +226,7 @@ public class MyAi implements Ai {
 		//if on a hub like bus or
 		boolean isAtHub = false;
 		for (int neighbor : boardState.getSetup().graph.adjacentNodes(mrXlocation)) {
-			var transports = boardState.getSetup().graph.edgeValueOrDefault(mrXlocation, neighbor, ImmutableSet.of());
+			ImmutableSet<ScotlandYard.Transport> transports = boardState.getSetup().graph.edgeValueOrDefault(mrXlocation, neighbor, ImmutableSet.of());
 
 			if (transports.contains(ScotlandYard.Transport.UNDERGROUND) || transports.contains(ScotlandYard.Transport.BUS)) {
 				isAtHub = true;
@@ -264,10 +264,10 @@ public class MyAi implements Ai {
 
 		return finalReward;
     }
+
 // gets the tickets for a specific piece
 	private ImmutableMap<ScotlandYard.Ticket, Integer> getTicketMap(Board board, Piece piece) {
-		Board.TicketBoard ticketBoard = board.getPlayerTickets(piece)
-				.orElseThrow(() -> new IllegalArgumentException("Player not found"));
+		Board.TicketBoard ticketBoard = board.getPlayerTickets(piece).orElseThrow();
 
 		Map<ScotlandYard.Ticket, Integer> map = new HashMap<>();
 		for (ScotlandYard.Ticket t : ScotlandYard.Ticket.values()) {
@@ -308,7 +308,7 @@ public class MyAi implements Ai {
 	@Nonnull @Override public Move pickMove(
 			@Nonnull Board board,
 			Pair<Long, TimeUnit> timeoutPair) {
-		var moves = board.getAvailableMoves().asList();
+		ImmutableList<Move> moves = board.getAvailableMoves().asList();
 		Board.GameState state = reconstructState(board, moves.get(0).source());
 		int depth=3;
 
