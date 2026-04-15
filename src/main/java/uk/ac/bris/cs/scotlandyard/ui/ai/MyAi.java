@@ -153,29 +153,6 @@ public class MyAi implements Ai {
 		return false;
 	}
 
-//	checks if the detectives has the tickets available to use the specific nodes
-	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
-		ImmutableSet<ScotlandYard.Transport> requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
-//		get all detectives
-		List<Piece> detectives = board.getPlayers().stream()
-				.filter(p-> p.isDetective())
-				.toList();
-
-		for (Piece det : detectives) {
-			for (ScotlandYard.Transport t : requiredTransports) {
-//				check if the detective has the specific ticket (Taxi, Bus, or Underground)
-//				gets the count for each ticket type
-				int count = board.getPlayerTickets(det)
-						.map(tickets -> tickets.getCount(t.requiredTicket()))
-						.orElse(0);
-//				detective could use that edge
-				if (count > 0) return true;
-			}
-		}
-		return false;
-
-	}
-
 //	bfs search for nearest detective from the current potential node being tested
 	private Integer distanceToDetective(GameSetup game,Board board, List<Piece> detectives, int myLocation) {
 		int closestDistance = Integer.MAX_VALUE;
@@ -213,20 +190,25 @@ public class MyAi implements Ai {
 		Board.GameState boardState=state.gameState;
 
 		ImmutableSet<Piece> winner = boardState.getWinner();
-		if (winner.contains(Piece.MrX.MRX)) return 10000.0f; //mrX Won
-		if (!winner.isEmpty()) return -10000.0f;
+		if (winner.contains(Piece.MrX.MRX)) {
+			return 10000.0f; //mrX Won
+		}
+		if (!winner.isEmpty()) {
+			return -10000.0f;
+		}
 
-		List<Piece> detectivePieces=boardState.getPlayers().stream().filter(p->p.isDetective()).toList();
-		int mrXlocation= state.getPieceLocation(Piece.MrX.MRX);
+		List<Piece> detectivePieces = boardState.getPlayers().stream().filter(p -> p.isDetective()).toList();
+		int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
 
-		float detectiveDistance = distanceToDetective(boardState.getSetup(),boardState, detectivePieces, mrXlocation);
+		float detectiveDistance = distanceToDetective(boardState.getSetup(),boardState, detectivePieces, mrXLocation);
 
-		int escapeRoutes = boardState.getSetup().graph.adjacentNodes(mrXlocation).size();
+		int escapeRoutes = boardState.getSetup().graph.adjacentNodes(mrXLocation).size();
 
-		//if on a hub like bus or
+//		if on a hub like bus or underground
 		boolean isAtHub = false;
-		for (int neighbor : boardState.getSetup().graph.adjacentNodes(mrXlocation)) {
-			ImmutableSet<ScotlandYard.Transport> transports = boardState.getSetup().graph.edgeValueOrDefault(mrXlocation, neighbor, ImmutableSet.of());
+
+		for (int neighbor : boardState.getSetup().graph.adjacentNodes(mrXLocation)) {
+			ImmutableSet<ScotlandYard.Transport> transports = boardState.getSetup().graph.edgeValueOrDefault(mrXLocation, neighbor, ImmutableSet.of());
 
 			if (transports.contains(ScotlandYard.Transport.UNDERGROUND) || transports.contains(ScotlandYard.Transport.BUS)) {
 				isAtHub = true;
@@ -234,38 +216,36 @@ public class MyAi implements Ai {
 			}
 		}
 
+//		prevent near misses with detectives
+		if (detectiveDistance <= 1) {
+			penalty += 9000.0f;
+		}
 
-		//prevent dead ends
-//		if (escapeRoutes <=2){penalty +=1000;}
-		//prevent near misses with detectives
-		if (detectiveDistance <= 1) {penalty += 9000.0f;}
-		if (detectiveDistance <= 2) {penalty += 2000.0f;}
-
-
-		//ticket weighting
+//		ticket weighting
 		if (detectiveDistance <= 3) {
 			finalReward = (detectiveDistance * 500.0f) + (escapeRoutes * 50.0f) - penalty;
 		} else {
-			finalReward = (detectiveDistance * 100.0f) + (escapeRoutes * 50.0f) - penalty;
+			finalReward = (detectiveDistance * 100.0f) + (escapeRoutes * 15.0f) - penalty;
 		}
 
 		if (isAtHub) {
-			finalReward += 200.0f; //reward staying near fast-travel points
+			finalReward += 50.0f; //reward staying near hubs
 		}
-		//weight secret and double moves more
-		int secrets= boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.SECRET)).orElse(0);
-		int doubles= boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.DOUBLE)).orElse(0);
 
-		int taxi= boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.TAXI)).orElse(0);
-		int bus= boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.BUS)).orElse(0);
-		int underground= boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.UNDERGROUND)).orElse(0);
+//		weight secret and double moves more
+		int secrets = boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.SECRET)).orElse(0);
+		int doubles = boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.DOUBLE)).orElse(0);
 
-		finalReward= finalReward + secrets* 20.0f + doubles*50.0f + underground*10.0f + bus*5.0f + taxi;
+		int taxi = boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.TAXI)).orElse(0);
+		int bus = boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.BUS)).orElse(0);
+		int underground = boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.UNDERGROUND)).orElse(0);
+
+		finalReward += (secrets * 20.0f) + (doubles * 100.0f) + (underground * 10.0f) + (bus * 5.0f) + taxi;
 
 		return finalReward;
     }
 
-// gets the tickets for a specific piece
+//  gets the tickets for a specific piece
 	private ImmutableMap<ScotlandYard.Ticket, Integer> getTicketMap(Board board, Piece piece) {
 		Board.TicketBoard ticketBoard = board.getPlayerTickets(piece).orElseThrow();
 
@@ -312,16 +292,16 @@ public class MyAi implements Ai {
 		Board.GameState state = reconstructState(board, moves.get(0).source());
 		int depth=3;
 
-		return moves.parallelStream()
-				.map(move -> {
-					int destination = getDestinations(move).get(getDestinations(move).size() - 1);
-					float score = alphaBeta(new VirtualState(state.advance(move)),
-							depth, -Float.MAX_VALUE, Float.MAX_VALUE, false, depth);
-					return new AbstractMap.SimpleEntry<>(move, score);
-				})
-				// Find the entry with the highest score
-				.max(Comparator.comparing(Map.Entry::getValue))
-				.map(Map.Entry::getKey)
-				.orElse(moves.get(0));
+		Move bestMove = moves.get(0);
+		float maxScore = -Float.MAX_VALUE;
+		for (Move move : moves) {
+			float score = alphaBeta(new VirtualState(state.advance(move)),depth,-Float.MAX_VALUE,Float.MAX_VALUE,false, depth);
+			if (score > maxScore) {
+				maxScore = score;
+				bestMove = move;
+			}
+		}
+
+		return bestMove;
 	}
 }
