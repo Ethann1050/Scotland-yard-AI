@@ -15,7 +15,7 @@ public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
 
-	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation) {
+	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation, Piece detective) {
 
 		Set<Integer> spotsToSearch = new HashSet<>();
 		spotsToSearch.add(startingLocation);
@@ -43,7 +43,7 @@ public class MyAi implements Ai {
 
 					//if no checked this connected spot yet, add it to the list for the next "move"
 					if (!spotsAlreadyChecked.contains(connectedSpot)) {
-						if (canAnyDetectiveUseNode(game, board, currentSpot, connectedSpot)) {
+						if (canThisDetectiveUseNode(game, board, currentSpot, connectedSpot, detective)) {
 							spotsAlreadyChecked.add(connectedSpot);
 							nextLevelOfSpots.add(connectedSpot);
 						}
@@ -64,7 +64,7 @@ public class MyAi implements Ai {
 		return !state.gameState.getWinner().isEmpty();
 	}
 
-//	This is just a greedy algorithm
+//	This is just a greedy algorithm that checks if any move reuslts in a win and also moves the detectives to their best move to move closest to the detective
 	private List<VirtualState> getDetectiveResponses(VirtualState state) {
 	Board.GameState currentState = state.gameState;
 
@@ -96,7 +96,7 @@ public class MyAi implements Ai {
 			for (Move move : currentState.getAvailableMoves()) {
 				if (move.commencedBy().equals(player)) {
 					int destination = getDestinations(move).get(getDestinations(move).size() - 1);
-					int dist = breadthFirstSearch(currentState.getSetup(), currentState, n -> n == mrXLocation, destination);
+					int dist = breadthFirstSearch(currentState.getSetup(), currentState, n -> n == mrXLocation, destination, player);
 					if (dist < minDistance) {
 						minDistance = dist;
 						bestMove = move;
@@ -119,7 +119,7 @@ public class MyAi implements Ai {
 			float max= -Float.MAX_VALUE;
 			//go through MrX moves
 			for (Move move: state.getAvailableMoves()){
-				//double moves are skipped wat lower depth to optimise as double moves only really matter for fast escape for near detectives;
+				//double moves are skipped at lower depth to optimise as double moves only really matter for fast escape if detectives are near;
 				if (depth <maxdepth && move instanceof Move.DoubleMove) continue;
 
 				VirtualState next = state.advance(move);
@@ -148,6 +148,22 @@ public class MyAi implements Ai {
 		return min;
 	}
 
+	private boolean canThisDetectiveUseNode (GameSetup game, Board board, Integer current, Integer connected, Piece detective) {
+		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+
+		for (ScotlandYard.Transport t : requiredTransports) {
+			//check if the detective has the specific ticket (Taxi, Bus, or Underground)
+			//gets the count for each ticket type
+			int count = board.getPlayerTickets(detective)
+					.map(tickets -> tickets.getCount(t.requiredTicket()))
+					.orElse(0);
+			//detective could use that edge
+			if (count > 0) return true;
+		}
+		return false;
+	}
+
+	//checks if the detectives has the tickets available to use the specific nodes
 	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
 		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
 		// get all detectives
@@ -172,11 +188,20 @@ public class MyAi implements Ai {
 
 	//bfs search for nearest detective from the current potential node being tested
 	private Integer distanceToDetective(GameSetup game,Board board, List<Piece> detectives, int myLocation) {
-		return breadthFirstSearch(game, board, node->detectives.contains(node),myLocation);
+		int closestDistance = Integer.MAX_VALUE;
+		int currentDistance = Integer.MAX_VALUE;
+		for (Piece detective : detectives) {
+			int detectiveLocation = board.getDetectiveLocation( (Piece.Detective) detective).orElseThrow();
+			currentDistance = breadthFirstSearch(game, board, node -> node == myLocation, detectiveLocation, detective);
+			if (currentDistance != -1 && currentDistance < closestDistance) {
+				closestDistance = currentDistance;
+			}
+		}
+		return closestDistance;
 
 	}
 
-	//gets the destination from a move
+	//gets the destination from a move uses visitor pattern
 	private List<Integer> getDestinations(Move move) {
 		return move.accept(new Move.Visitor<>() {
 			@Override
@@ -191,7 +216,7 @@ public class MyAi implements Ai {
 		});
 	}
 
-//	evaluates heuristics
+//	evaluates heuristics and weighting
 	private float evaluateReward(VirtualState state) {
 		float penalty = 0;
 		float finalReward;
@@ -208,7 +233,7 @@ public class MyAi implements Ai {
 
 		int escapeRoutes = boardState.getSetup().graph.adjacentNodes(mrXlocation).size();
 
-		//if on a hub
+		//if on a hub like bus or
 		boolean isAtHub = false;
 		for (int neighbor : boardState.getSetup().graph.adjacentNodes(mrXlocation)) {
 			var transports = boardState.getSetup().graph.edgeValueOrDefault(mrXlocation, neighbor, ImmutableSet.of());
@@ -229,13 +254,13 @@ public class MyAi implements Ai {
 
 		//ticket weighting
 		if (detectiveDistance <= 3) {
-			finalReward = (detectiveDistance * 1000.0f) + (escapeRoutes * 15.0f) - penalty;
+			finalReward = (detectiveDistance * 500.0f) + (escapeRoutes * 250.0f) - penalty;
 		} else {
-			finalReward = (detectiveDistance * 100.0f) + (escapeRoutes * 10.0f) - penalty;
+			finalReward = (detectiveDistance * 100.0f) + (escapeRoutes * 50.0f) - penalty;
 		}
 
 		if (isAtHub) {
-			finalReward += 100.0f; //reward staying near fast-travel points
+			finalReward += 200.0f; //reward staying near fast-travel points
 		}
 		//weight secret and double moves more
 		int secrets= boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.SECRET)).orElse(0);
@@ -249,7 +274,7 @@ public class MyAi implements Ai {
 
 		return finalReward;
     }
-
+// gets the tickets for a specific piece
 	private ImmutableMap<ScotlandYard.Ticket, Integer> getTicketMap(Board board, Piece piece) {
 		Board.TicketBoard ticketBoard = board.getPlayerTickets(piece)
 				.orElseThrow(() -> new IllegalArgumentException("Player not found"));
