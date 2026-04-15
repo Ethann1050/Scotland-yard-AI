@@ -15,7 +15,7 @@ public class MyAi implements Ai {
 
 	@Nonnull @Override public String name() { return "Name me!"; }
 
-	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation, Piece detective) {
+	private Integer breadthFirstSearch(GameSetup game, Board board, Predicate<Integer> target, int startingLocation) {
 
 		Set<Integer> spotsToSearch = new HashSet<>();
 		spotsToSearch.add(startingLocation);
@@ -27,7 +27,7 @@ public class MyAi implements Ai {
 
 		while (!spotsToSearch.isEmpty()) {
 			//he's quite safe anyway at this point it's computationally expensive to search more
-			if (movesCount>5){return movesCount;}
+			if (movesCount==5){return movesCount;}
 
 			Set<Integer> nextLevelOfSpots = new HashSet<>();
 
@@ -43,7 +43,7 @@ public class MyAi implements Ai {
 
 					//if no checked this connected spot yet, add it to the list for the next "move"
 					if (!spotsAlreadyChecked.contains(connectedSpot)) {
-						if (canThisDetectiveUseNode(game, board, currentSpot, connectedSpot, detective)) {
+						if (canAnyDetectiveUseNode(game, board, currentSpot, connectedSpot)) {
 							spotsAlreadyChecked.add(connectedSpot);
 							nextLevelOfSpots.add(connectedSpot);
 						}
@@ -66,36 +66,50 @@ public class MyAi implements Ai {
 
 //	This is just a greedy algorithm
 	private List<VirtualState> getDetectiveResponses(VirtualState state) {
-		Board.GameState currentState = state.gameState;
+	Board.GameState currentState = state.gameState;
 
-		int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
-		for (Piece player : currentState.getPlayers().asList()) {
-			if (player.isDetective()) {
-				Move bestMove = null;
-				int minDistance = Integer.MAX_VALUE;
-
-				for (Move move : currentState.getAvailableMoves()) {
-					if (move.commencedBy().equals(player)) {
-						int destination = getDestinations(move).get(getDestinations(move).size() - 1);
-						int distanceToMrX = breadthFirstSearch(currentState.getSetup(), currentState, node -> node == mrXLocation, destination, player);
-						if (distanceToMrX < minDistance) {
-							minDistance = distanceToMrX;
-							bestMove = move;
-						}
+	for (Piece player : currentState.getPlayers().asList()) {
+		if (player.isDetective()) {
+			// 1. CRITICAL: Check if any available move for this detective results in a win
+			Move winningMove = null;
+			for (Move move : currentState.getAvailableMoves()) {
+				if (move.commencedBy().equals(player)) {
+					// If this specific move ends the game, take it immediately!
+					if (!currentState.advance(move).getWinner().isEmpty()) {
+						winningMove = move;
+						break;
 					}
 				}
-				if (bestMove != null) {
-					currentState = currentState.advance(bestMove);
-				}// else {
-					//break;
-				//}
 			}
+
+			if (winningMove != null) {
+				currentState = currentState.advance(winningMove);
+				// If a detective wins, we can stop simulating other detectives
+				return List.of(new VirtualState(currentState));
+			}
+
+			// 2. If no winning move, use your existing greedy BFS logic
+			Move bestMove = null;
+			int minDistance = Integer.MAX_VALUE;
+			int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
+
+			for (Move move : currentState.getAvailableMoves()) {
+				if (move.commencedBy().equals(player)) {
+					int destination = getDestinations(move).get(getDestinations(move).size() - 1);
+					int dist = breadthFirstSearch(currentState.getSetup(), currentState, n -> n == mrXLocation, destination);
+					if (dist < minDistance) {
+						minDistance = dist;
+						bestMove = move;
+					}
+				}
+			}
+			if (bestMove != null) currentState = currentState.advance(bestMove);
 		}
+	}
+	return List.of(new VirtualState(currentState));
+}
 
-        return List.of(new VirtualState(currentState));
-    }
-
-	private float alphaBeta(VirtualState state, int depth, float alpha, float beta, boolean isMrX){
+	private float alphaBeta(VirtualState state, int depth, float alpha, float beta, boolean isMrX,int maxdepth){
 		//base case
 		if (depth==0 || isCaught(state)){
 			return evaluateReward(state);
@@ -105,9 +119,12 @@ public class MyAi implements Ai {
 			float max= -Float.MAX_VALUE;
 			//go through MrX moves
 			for (Move move: state.getAvailableMoves()){
+				//double moves are skipped wat lower depth to optimise as double moves only really matter for fast escape for near detectives;
+				if (depth <maxdepth && move instanceof Move.DoubleMove) continue;
+
 				VirtualState next = state.advance(move);
 
-				float eval = alphaBeta(next,depth-1,alpha,beta,false);
+				float eval = alphaBeta(next,depth-1,alpha,beta,false, maxdepth);
 
 				max=Math.max(max,eval);
 
@@ -121,7 +138,7 @@ public class MyAi implements Ai {
 		float min= Float.MAX_VALUE;
 
 		for (VirtualState nextResponse : getDetectiveResponses(state)){
-			float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true);
+			float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true, maxdepth);
 			min=Math.min(min,eval);
 
 			beta=Math.min(beta, eval);
@@ -131,34 +148,31 @@ public class MyAi implements Ai {
 		return min;
 	}
 
-	private boolean canThisDetectiveUseNode (GameSetup game, Board board, Integer current, Integer connected, Piece detective) {
-		ImmutableSet<ScotlandYard.Transport> requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+	private boolean canAnyDetectiveUseNode(GameSetup game, Board board, Integer current, Integer connected){
+		var requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
+		// get all detectives
+		List<Piece> detectives = board.getPlayers().stream()
+				.filter(p-> p.isDetective())
+				.toList();
 
-		for (ScotlandYard.Transport t : requiredTransports) {
-			//check if the detective has the specific ticket (Taxi, Bus, or Underground)
-			//gets the count for each ticket type
-			int count = board.getPlayerTickets(detective)
-					.map(tickets -> tickets.getCount(t.requiredTicket()))
-					.orElse(0);
-			//detective could use that edge
-			if (count > 0) return true;
+		for (Piece det : detectives) {
+			for (ScotlandYard.Transport t : requiredTransports) {
+				//check if the detective has the specific ticket (Taxi, Bus, or Underground)
+				//gets the count for each ticket type
+				int count = board.getPlayerTickets(det)
+						.map(tickets -> tickets.getCount(t.requiredTicket()))
+						.orElse(0);
+				//detective could use that edge
+				if (count > 0) return true;
+			}
 		}
 		return false;
+
 	}
 
 	//bfs search for nearest detective from the current potential node being tested
 	private Integer distanceToDetective(GameSetup game,Board board, List<Piece> detectives, int myLocation) {
-		int closestDistance = 999999;
-		int currentDistance = 999999;
-		//change this to search from mrX more efficient i think
-		for (Piece detective : detectives) {
-			int detectiveLocation = board.getDetectiveLocation( (Piece.Detective) detective).orElseThrow();
-			currentDistance = breadthFirstSearch(game, board, node -> node == myLocation, detectiveLocation, detective);
-			if (currentDistance != -1 && currentDistance < closestDistance) {
-				closestDistance = currentDistance;
-			}
-		}
-		return closestDistance;
+		return breadthFirstSearch(game, board, node->detectives.contains(node),myLocation);
 
 	}
 
@@ -209,14 +223,15 @@ public class MyAi implements Ai {
 		//prevent dead ends
 		if (escapeRoutes <=2){penalty +=1000;}
 		//prevent near misses with detectives
-		if (detectiveDistance <= 2) {penalty += 125.0f;}
+		if (detectiveDistance <= 2) {penalty += 2000.0f;}
+		if (detectiveDistance <= 1) {penalty += 9000.0f;}
 
 
 		//ticket weighting
 		if (detectiveDistance <= 3) {
-			finalReward = (detectiveDistance * 100.0f) + (escapeRoutes * 15.0f) - penalty;
+			finalReward = (detectiveDistance * 1000.0f) + (escapeRoutes * 15.0f) - penalty;
 		} else {
-			finalReward = (detectiveDistance * 10.0f) + (escapeRoutes * 10.0f) - penalty;
+			finalReward = (detectiveDistance * 100.0f) + (escapeRoutes * 10.0f) - penalty;
 		}
 
 		if (isAtHub) {
@@ -280,12 +295,12 @@ public class MyAi implements Ai {
 			Pair<Long, TimeUnit> timeoutPair) {
 		var moves = board.getAvailableMoves().asList();
 		Board.GameState state = reconstructState(board, moves.get(0).source());
+		int depth=3;
 
 		Move bestMove = moves.get(0);
 		float maxScore = -Float.MAX_VALUE;
 		for (Move move : moves) {
-			//false or true idk yet at end of here
-			float score = alphaBeta(new VirtualState(state.advance(move)),3,-Float.MAX_VALUE,Float.MAX_VALUE,false);
+			float score = alphaBeta(new VirtualState(state.advance(move)),depth,-Float.MAX_VALUE,Float.MAX_VALUE,false, depth);
 			if (score > maxScore) {
 				maxScore = score;
 				bestMove = move;
