@@ -99,6 +99,7 @@ public class MyAi implements Ai {
 							//looking for lowest possible distance so negatives
 							currentMoveScore -=2.5;
 						}
+
 						// choose score with the lowest distance
 						if (currentMoveScore < bestScore) {
 							bestScore=currentMoveScore;
