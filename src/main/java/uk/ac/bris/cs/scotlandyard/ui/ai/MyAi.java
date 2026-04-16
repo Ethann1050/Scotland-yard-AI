@@ -309,7 +309,7 @@ public class MyAi implements Ai {
 		);
 	}
 
-	@Nonnull @Override public Move pickMove(
+	@Nonnull @Override public Move pickMove (
 			@Nonnull Board board,
 			Pair<Long, TimeUnit> timeoutPair) {
 		ImmutableList<Move> moves = board.getAvailableMoves().asList();
