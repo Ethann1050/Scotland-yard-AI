@@ -73,12 +73,12 @@ public class MyAi implements Ai {
 		int mrXLocation = state.getPieceLocation(Piece.MrX.MRX);
 		Set<Integer> mrXExits = new HashSet<>(currentState.getSetup().graph.adjacentNodes(mrXLocation));
 
-		//loop through detectives
+//		loop through detectives
 		for (Piece player : currentState.getPlayers().asList()) {
 			if (player.isDetective()) {
 				Move bestMove = null;
 				float bestScore = Float.MAX_VALUE;
-// go through all detective moves available
+//  			go through all detective moves available
 				ImmutableSet<Move> availableMoves = currentState.getAvailableMoves();
 				for (Move move : availableMoves) {
 					if (move.commencedBy().equals(player)) {
@@ -97,7 +97,7 @@ public class MyAi implements Ai {
 						//higher score if mrX exit is blocked
 						if (mrXExits.contains(destination)){
 							//looking for lowest possible distance so negatives
-							currentMoveScore -=2.5;
+							currentMoveScore -= 2.5;
 						}
 
 						// choose score with the lowest distance
@@ -151,7 +151,7 @@ public class MyAi implements Ai {
 		}
 
 		float min= Float.MAX_VALUE;
-// look at the best possible detective response based on getDetectiveResponses
+//  	look at the best possible detective response based on getDetectiveResponses
 		for (VirtualState nextResponse : getDetectiveResponses(state)){
 			float eval = alphaBeta(nextResponse, depth -1, alpha, beta, true, maxDepth, deadline);
 			min=Math.min(min,eval);
@@ -178,7 +178,7 @@ public class MyAi implements Ai {
 		return false;
 	}
 
-	//  bfs search for nearest detective from the current potential node being tested
+//	bfs search for nearest detective from the current potential node being tested
 	private Integer distanceToDetective(GameSetup game,Board board, List<Piece> detectives, int myLocation) {
 		int closestDistance = Integer.MAX_VALUE;
 		int currentDistance = Integer.MAX_VALUE;
@@ -194,7 +194,7 @@ public class MyAi implements Ai {
 
 	}
 
-	//  gets the destination from a move uses visitor pattern
+//	gets the destination from a move uses visitor pattern
 	private List<Integer> getDestinations(Move move) {
 		return move.accept(new Visitor<>() {
 			@Override
@@ -209,7 +209,7 @@ public class MyAi implements Ai {
 		});
 	}
 
-	//  evaluates heuristics and weighting
+//	evaluates heuristics and weighting
 	private float evaluateReward(VirtualState state) {
 		float penalty = 0;
 		float finalReward = 0;
@@ -249,7 +249,7 @@ public class MyAi implements Ai {
 		int bus = boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.BUS)).orElse(0);
 		int underground = boardState.getPlayerTickets(Piece.MrX.MRX).map(t->t.getCount(ScotlandYard.Ticket.UNDERGROUND)).orElse(0);
 
-//     prevent near misses with detectives
+//      prevent near misses with detectives
 		if (detectiveDistance <= 1) {
 			penalty += 100000.0f; //immediate capture
 			finalReward = (detectiveDistance * 10000.0f) + (escapeRoutes * 4000.0f) + (doubles * 100.0f) - penalty;
@@ -264,7 +264,8 @@ public class MyAi implements Ai {
 		}
 
 		if (isAtHub) {
-			finalReward += 1500.0f; //reward staying near hubs
+//			reward staying near hubs
+			finalReward += 1500.0f;
 		}
 
 		finalReward += (secrets * 200.0f) + (underground * 100.0f) + (bus * 50.0f) + (taxi * 10);
@@ -305,18 +306,21 @@ public class MyAi implements Ai {
 		ImmutableList<Move> moves = board.getAvailableMoves().asList();
 		Board.GameState state = reconstructState(board, moves.get(0).source());
 
-		//timer to make move but 2 seconds before it ends to allow time
+//		timer to make move but 2 seconds before it ends to allow time
 		long deadline = System.currentTimeMillis() + timeoutPair.right().toMillis(timeoutPair.left()) - 2000;
 		Move bestMoveOverall = moves.get(0);
 
-		// does each depth step by step to allow time deadlines to interrupt it and play the current best move from the depth its gotten to so far
+//		does each depth step by step to allow time deadlines to interrupt it and play the current best move from the depth it's got to so far
 		try {
-			for (int d = 1; d <= 5; d++) {
+//			start at 2, because there's no point wasting computation time on
+			for (int depth = 2; depth <= 5; depth++) {
 				float maxScore = -Float.MAX_VALUE;
 				Move bestAtDepth = null;
 				for (Move move : moves) {
-					if (System.currentTimeMillis() > deadline) throw new RuntimeException();
-					float score = alphaBeta(new VirtualState(state.advance(move)), d, -Float.MAX_VALUE, Float.MAX_VALUE, false, d, deadline);
+					if (System.currentTimeMillis() > deadline) {
+						throw new RuntimeException();
+					}
+					float score = alphaBeta(new VirtualState(state.advance(move)), depth, -Float.MAX_VALUE, Float.MAX_VALUE, false, depth, deadline);
 					if (score > maxScore) {
 						maxScore = score;
 						bestAtDepth = move;
