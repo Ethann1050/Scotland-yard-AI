@@ -26,22 +26,24 @@ public class MyAi implements Ai {
 		int movesCount = 0;
 
 		while (!spotsToSearch.isEmpty()) {
-			//he's quite safe anyway at this point it's computationally expensive to search more
-			if (movesCount==5){return movesCount;}
+//			he's quite safe anyway at this point it's computationally expensive to search more
+			if (movesCount == 5) {
+				return movesCount;
+			}
 
 			Set<Integer> nextLevelOfSpots = new HashSet<>();
 
 			for (int currentSpot : spotsToSearch) {
 
-				//if a detective is at this spot we found the closest one
+//				if a detective is at this spot we found the closest one
 				if (target.test(currentSpot)) {
 					return movesCount;
 				}
 
-				//look at all the paths connected to this spot
+//				look at all the paths connected to this spot
 				for (int connectedSpot : game.graph.adjacentNodes(currentSpot)) {
 
-					//if no checked this connected spot yet, add it to the list for the next "move"
+//					if no checked this connected spot yet, add it to the list for the next "move"
 					if (!spotsAlreadyChecked.contains(connectedSpot)) {
 						if (canThisDetectiveUseNode(game, board, currentSpot, connectedSpot, detective)) {
 							spotsAlreadyChecked.add(connectedSpot);
@@ -51,12 +53,12 @@ public class MyAi implements Ai {
 				}
 			}
 
-			//finished everything one count away move to next count away
+//			finished everything one count away move to next count away
 			spotsToSearch = nextLevelOfSpots;
 			movesCount = movesCount + 1;
 		}
 
-		//if we searched the whole map and found no detectives
+//		if we searched the whole map and found no detectives
 		return -1;
 	}
 
@@ -141,14 +143,14 @@ public class MyAi implements Ai {
 	private boolean canThisDetectiveUseNode (GameSetup game, Board board, Integer current, Integer connected, Piece detective) {
 		ImmutableSet<ScotlandYard.Transport> requiredTransports = game.graph.edgeValueOrDefault(current, connected, ImmutableSet.of());
 
-		for (ScotlandYard.Transport t : requiredTransports) {
+		for (ScotlandYard.Transport transport : requiredTransports) {
 //			check if the detective has the specific ticket (Taxi, Bus, or Underground)
 //			gets the count for each ticket type
-			int count = board.getPlayerTickets(detective)
-					.map(tickets -> tickets.getCount(t.requiredTicket()))
-					.orElse(0);
+			int count = board.getPlayerTickets(detective).map(tickets -> tickets.getCount(transport.requiredTicket())).orElse(0);
 //			detective could use that edge
-			if (count > 0) return true;
+			if (count > 0) {
+				return true;
+			}
 		}
 		return false;
 	}
@@ -187,7 +189,7 @@ public class MyAi implements Ai {
 	private float evaluateReward(VirtualState state) {
 		float penalty = 0;
 		float finalReward;
-		Board.GameState boardState=state.gameState;
+		Board.GameState boardState = state.gameState;
 
 		ImmutableSet<Piece> winner = boardState.getWinner();
 		if (winner.contains(Piece.MrX.MRX)) {
@@ -246,43 +248,30 @@ public class MyAi implements Ai {
     }
 
 //  gets the tickets for a specific piece
-	private ImmutableMap<ScotlandYard.Ticket, Integer> getTicketMap(Board board, Piece piece) {
+	private ImmutableMap<ScotlandYard.Ticket, Integer> getTickets(Board board, Piece piece) {
 		Board.TicketBoard ticketBoard = board.getPlayerTickets(piece).orElseThrow();
 
 		Map<ScotlandYard.Ticket, Integer> map = new HashMap<>();
-		for (ScotlandYard.Ticket t : ScotlandYard.Ticket.values()) {
-			map.put(t, ticketBoard.getCount(t));
+		for (ScotlandYard.Ticket ticket : ScotlandYard.Ticket.values()) {
+			map.put(ticket, ticketBoard.getCount(ticket));
 		}
+
 		return ImmutableMap.copyOf(map);
 	}
 
 	private Board.GameState reconstructState(Board board, int mrXLocation) {
-		// 1. Reconstruct MrX Player
-		Player mrX = new Player(
-				Piece.MrX.MRX,
-				getTicketMap(board, Piece.MrX.MRX), // Use the helper here
-				mrXLocation
-		);
+		Player mrX = new Player(Piece.MrX.MRX, getTickets(board, Piece.MrX.MRX), mrXLocation);
 
-		// 2. Reconstruct Detectives
 		List<Player> detectives = new ArrayList<>();
-		for (Piece p : board.getPlayers()) {
-			if (p.isDetective()) {
-				int loc = board.getDetectiveLocation((Piece.Detective) p).orElseThrow();
-				detectives.add(new Player(
-						p,
-						getTicketMap(board, p), // And here
-						loc
-				));
+		for (Piece piece : board.getPlayers()) {
+			if (piece.isDetective()) {
+				int location = board.getDetectiveLocation((Piece.Detective) piece).orElseThrow();
+				detectives.add(new Player(piece, getTickets(board, piece), location));
 			}
 		}
 
-		// 3. Build using your Factory
-		return new MyGameStateFactory().build(
-				board.getSetup(),
-				mrX,
-				ImmutableList.copyOf(detectives)
-		);
+//		detectives has to be an immutable list, so have to use copyOf to change type from ArrayList to ImmutableList
+		return new MyGameStateFactory().build(board.getSetup(),	mrX, ImmutableList.copyOf(detectives));
 	}
 
 	@Nonnull @Override public Move pickMove(
